@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WARDEN — SDA Threat Response</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width:100%; height:100%; background:#000; font-family:'Inter',sans-serif; overflow:hidden; color:#8A9AAA; }
+
+/* ═══════════════════════════════════
+   TOPBAR
+═══════════════════════════════════ */
+.topbar {
+  position:fixed; top:0; left:0; right:0; height:40px;
+  background:#000; border-bottom:1px solid #1A2230;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; z-index:300;
+}
+.tb-left { display:flex; align-items:center; gap:16px; }
+.tb-logo { font-size:15px; font-weight:700; color:#DDEEFF; letter-spacing:2.5px; }
+.tb-sep  { width:1px; height:14px; background:#1A2230; }
+.tb-mission { font-size:14px; color:#7A8A9A; letter-spacing:1px; font-weight:500; }
+.tb-right { display:flex; align-items:center; gap:14px; }
+.tb-clock { font-size:15px; font-weight:600; color:#7A8A9A; font-variant-numeric:tabular-nums; }
+.tb-op    { font-size:14px; color:#7A8A9A; font-weight:500; }
+.alert-pill {
+  display:flex; align-items:center; gap:6px;
+  background:rgba(204,51,51,.08); border:1px solid rgba(204,51,51,.3);
+  border-radius:2px; padding:3px 10px;
+  font-size:14px; font-weight:700; color:#E04444; letter-spacing:.5px;
+  cursor:pointer; transition:background .15s;
+}
+.alert-pill:hover { background:rgba(204,51,51,.14); }
+.alert-dot { width:5px; height:5px; border-radius:50%; background:#E04444; animation:pulse 1.4s ease-in-out infinite; }
+.alert-pill.none { color:#7A8A9A; background:transparent; border-color:#1A2230; cursor:default; }
+.alert-pill.none .alert-dot { background:#7A8A9A; animation:none; }
+.mon-pill { display:none; align-items:center; gap:6px; background:rgba(74,143,212,.08); border:1px solid rgba(74,143,212,.3); border-radius:2px; padding:3px 10px; font-size:14px; font-weight:700; color:#4A8FD4; letter-spacing:.5px; cursor:pointer; transition:background .15s; }
+.mon-pill:hover { background:rgba(74,143,212,.14); }
+.mon-dot { width:5px; height:5px; border-radius:50%; background:#00CCCC; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
+
+/* ═══════════════════════════════════
+   LAYOUT
+═══════════════════════════════════ */
+.app-layout {
+  position:fixed; top:40px; bottom:0; left:0; right:0;
+  display:grid; grid-template-columns:380px 1fr 380px;
+  transition: grid-template-columns .22s ease;
+}
+.app-layout.left-collapsed  { grid-template-columns:0px 1fr 380px; }
+.app-layout.right-collapsed { grid-template-columns:380px 1fr 0px; }
+.app-layout.both-collapsed  { grid-template-columns:0px 1fr 0px; }
+
+/* ═══════════════════════════════════
+   SIDEBARS
+═══════════════════════════════════ */
+.sidebar { background:#000; display:flex; flex-direction:column; height:100%; overflow:hidden; transition:opacity .18s; }
+.sidebar.left  { border-right:1px solid #1A2230; }
+.sidebar.right { border-left:1px solid #1A2230; }
+.sidebar.collapsed { opacity:0; pointer-events:none; }
+
+/* collapse toggle buttons — sit on the globe edge */
+.col-btn {
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:16px; height:48px; z-index:20;
+  background:#080B0F; border:1px solid #1A2230;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:background .12s, border-color .12s;
+  color:#7A8A9A;
+}
+.col-btn:hover { background:#1A2230; border-color:#2A3A50; color:#DDEEFF; }
+.col-btn.left  { left:0; border-left:none; border-radius:0 3px 3px 0; }
+.col-btn.right { right:0; border-right:none; border-radius:3px 0 0 3px; }
+.col-btn svg   { transition:transform .2s; flex-shrink:0; }
+.col-btn.left.open  svg { transform:rotate(180deg); }
+.col-btn.right.open svg { transform:rotate(180deg); }
+
+.panel-header { padding:14px 16px 0; border-bottom:1px solid #1A2230; flex-shrink:0; background:#000; }
+.panel-meta { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+.panel-title { font-size:17px; font-weight:700; color:#DDEEFF; margin-bottom:3px; }
+.panel-sub   { font-size:14px; color:#7A8A9A; font-weight:500; }
+.state-badge {
+  font-size:13px; font-weight:700; color:#DDEEFF;
+  background:rgba(221,238,255,.08); border:1px solid rgba(221,238,255,.25);
+  border-radius:2px; padding:3px 8px; white-space:nowrap; letter-spacing:.5px;
+}
+.state-badge.l0 { color:#7A8A9A; background:transparent; border-color:#1A2230; }
+.state-badge.l1 { color:#E04444; background:rgba(204,51,51,.08); border-color:rgba(204,51,51,.3); }
+
+.tabs { display:flex; }
+.tab {
+  padding:8px 14px 7px; font-size:16px; font-weight:600;
+  font-family:'Inter',sans-serif; cursor:pointer; border:none;
+  background:transparent; color:#7A8A9A;
+  border-bottom:2px solid transparent; transition:color .12s;
+}
+.tab:first-child { padding-left:0; }
+.tab:hover:not(.disabled) { color:#8A9AAA; }
+.tab.active { color:#DDEEFF; border-bottom:2px solid #DDEEFF; }
+.tab.disabled { color:#2A3545; cursor:default; }
+
+.panel-scroll { flex:1; overflow-y:auto; overflow-x:hidden; }
+.panel-scroll::-webkit-scrollbar { width:3px; }
+.panel-scroll::-webkit-scrollbar-thumb { background:#1A2230; border-radius:2px; }
+
+/* ═══════════════════════════════════
+   SHARED COMPONENTS
+═══════════════════════════════════ */
+.sec-label {
+  font-size:13px; color:#7A8A9A; letter-spacing:1.5px;
+  text-transform:uppercase; font-weight:600;
+  padding:12px 16px 6px;
+}
+.field-grid   { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 16px 12px; }
+.fl { font-size:13px; color:#7A8A9A; letter-spacing:.8px; text-transform:uppercase; margin-bottom:2px; font-weight:500; }
+.fv { font-size:16px; font-weight:600; color:#8A9AAA; }
+.fv.hi  { color:#DDEEFF; }
+.fv.thr { color:#E04444; }
+
+/* Accordion */
+.acc-group { border-bottom:1px solid #1A2230; }
+.acc-row {
+  display:flex; align-items:center; padding:10px 16px;
+  cursor:pointer; transition:background .1s; gap:10px; user-select:none;
+}
+.acc-row:hover { background:rgba(255,255,255,.02); }
+.acc-row.open  { background:rgba(255,255,255,.025); }
+.acc-row.selected { background:rgba(255,255,255,.04); }
+.acc-row.selected.open { background:rgba(255,255,255,.05); }
+.acc-chevron { width:14px; flex-shrink:0; color:#7A8A9A; transition:transform .18s; }
+.acc-row.open .acc-chevron { transform:rotate(90deg); }
+.acc-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+/* MIL-STD-2525D affiliation frames — rendered as inline SVGs via JS */
+.milsym { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.milsym svg { display:block; }
+.acc-main { flex:1; min-width:0; }
+.acc-name { font-size:16px; font-weight:600; color:#DDEEFF; line-height:1.3; }
+.acc-sub  { font-size:14px; color:#7A8A9A; font-weight:500; margin-top:1px; }
+.acc-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.acc-body { display:none; background:#080B0F; border-top:1px solid #1A2230; padding-bottom:4px; }
+.acc-body.open { display:block; }
+.acc-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px 16px; }
+.acc-div { height:1px; background:#1A2230; margin:0 16px; }
+
+/* Tags */
+.tag { font-size:13px; font-weight:700; padding:2px 6px; border-radius:2px; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; }
+.tag-thr  { background:rgba(204,51,51,.1);  border:1px solid rgba(204,51,51,.5);  color:#E04444; }
+.tag-nom  { background:rgba(221,238,255,.06); border:1px solid rgba(221,238,255,.15); color:#7A8A9A; }
+.tag-mon  { background:rgba(74,143,212,.1);  border:1px solid rgba(74,143,212,.35); color:#4A8FD4; }
+.tag-risk { background:rgba(204,51,51,.1);  border:1px solid rgba(204,51,51,.5);  color:#E04444; }
+.tag-done { background:rgba(46,204,113,.08); border:1px solid rgba(46,204,113,.3);  color:#2ECC71; }
+
+/* Stat mini bar */
+.stat-mini { padding:6px 16px 8px; }
+.sm-row { display:flex; justify-content:space-between; margin-bottom:4px; }
+.sm-lbl { font-size:13px; color:#7A8A9A; text-transform:uppercase; letter-spacing:.8px; font-weight:500; }
+.sm-val { font-size:14px; font-weight:600; }
+.bar-t { height:4px; background:#1A2230; border-radius:2px; overflow:hidden; }
+.bar-f { height:100%; border-radius:2px; }
+.soh-grid { display:flex; flex-direction:column; gap:1px; }
+.soh-row  { display:flex; justify-content:space-between; align-items:baseline; padding:5px 0; border-bottom:1px solid rgba(26,34,48,0.6); gap:12px; }
+.soh-row:last-child { border-bottom:none; }
+.soh-lbl  { font-size:13px; color:#7A8A9A; text-transform:uppercase; letter-spacing:.8px; font-weight:500; flex-shrink:0; }
+.soh-val  { font-size:15px; font-weight:500; color:#8A9AAA; text-align:right; }
+.soh-warn { color:#E04444; }
+.soh-freshness { display:flex; justify-content:space-between; align-items:center; padding:6px 0 8px; margin-bottom:4px; border-bottom:1px solid #1A2230; }
+.soh-fresh-ts  { font-size:13px; color:#7A8A9A; font-weight:500; }
+.soh-valid     { font-size:13px; font-weight:700; letter-spacing:.5px; }
+.soh-valid.hi  { color:#8A9AAA; }
+.soh-valid.med { color:#DDEEFF; }
+.soh-valid.lo  { color:#E04444; }
+
+/* Contact chip */
+.cc {
+  margin:4px 16px 10px;
+  background:rgba(221,238,255,.03); border:1px solid #1A2230;
+  border-radius:3px; padding:8px 12px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.cc-countdown { font-size:17px; font-weight:700; color:#DDEEFF; font-variant-numeric:tabular-nums; }
+
+/* ═══════════════════════════════════
+   DEVIATION TAB
+═══════════════════════════════════ */
+.dev-block { margin:12px 16px; background:#080B0F; border:1px solid #1A2230; border-radius:3px; padding:12px; }
+.dev-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+.dev-num  { font-size:40px; font-weight:700; color:#E04444; line-height:1; }
+.dev-tier { font-size:14px; font-weight:600; color:#E04444; margin-top:3px; }
+.dev-lbl  { font-size:13px; color:#7A8A9A; letter-spacing:1px; text-transform:uppercase; font-weight:500; }
+.dev-right { text-align:right; }
+.pc-val   { font-size:18px; font-weight:700; color:#E04444; }
+.pc-scale { display:flex; gap:2px; margin-bottom:6px; }
+.pc-seg   { height:5px; flex:1; border-radius:1px; background:#1A2230; }
+.pc-seg.sl { background:#1E3040; } .pc-seg.sm2 { background:#283A20; } .pc-seg.sh { background:#E04444; }
+.pc-legend { display:flex; justify-content:space-between; font-size:12px; color:#7A8A9A; margin-bottom:10px; }
+.sig-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.sig-btn {
+  flex-shrink:0; width:18px; height:18px; background:transparent;
+  border:1px solid #1A2230; border-radius:2px; color:#7A8A9A; font-size:13px; font-weight:700;
+  font-family:'Inter',sans-serif; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .12s;
+}
+.sig-btn:hover { border-color:rgba(221,238,255,.3); color:#8A9AAA; }
+.sig-btn.open { border-color:#DDEEFF; color:#DDEEFF; background:rgba(221,238,255,.06); }
+.math-block { background:#000; border:1px solid #1A2230; border-radius:2px; padding:8px 10px; margin:6px 0 0; display:none; }
+.math-block.open { display:block; }
+.math-ttl { font-size:13px; color:#DDEEFF; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; font-weight:700; }
+.math-ln { font-size:14px; color:#7A8A9A; line-height:1.9; font-weight:500; }
+.math-ln em { color:#8A9AAA; font-style:normal; }
+.math-ln.res em { color:#E04444; font-weight:700; }
+.bar-row { padding:0 16px; margin-bottom:8px; }
+.bar-meta { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.bar-tlg { height:8px; background:#1A2230; border-radius:4px; overflow:hidden; }
+.bar-flg { height:100%; border-radius:4px; }
+.tl { padding:4px 16px 14px 32px; }
+.tl-i { position:relative; padding-bottom:12px; }
+.tl-i:last-child { padding-bottom:0; }
+.tl-line { position:absolute; left:-13px; top:10px; bottom:-2px; width:1px; background:#1A2230; }
+.tl-i:last-child .tl-line { display:none; }
+.tl-pip { position:absolute; left:-16px; top:3px; width:3px; height:13px; border-radius:2px; }
+.tl-t { font-size:13px; color:#7A8A9A; font-weight:500; margin-bottom:1px; }
+.tl-tx { font-size:15px; font-weight:500; color:#7A8A9A; line-height:1.4; }
+.tl-tag { display:inline-block; font-size:12px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; padding:1px 5px; border-radius:2px; margin-bottom:3px; }
+.tl-tag.maneuver { background:rgba(74,143,212,.1);  color:#4A8FD4; }
+.tl-tag.contact  { background:rgba(221,238,255,.07);color:#7A8A9A; }
+.tl-tag.sensor   { background:rgba(60,120,80,.15);  color:#5A9A6A; }
+.tl-tag.anomaly  { background:rgba(204,51,51,.1);  color:#E04444; }
+.tl-tag.coa      { background:rgba(46,204,113,.08); color:#2ECC71; }
+.tl-detail { font-size:14px; color:#8A9AAA; margin-top:2px; font-weight:500; }
+.tl-ft { background:transparent; border:1px solid #1A2230; border-radius:2px; color:#7A8A9A; font-size:13px; font-weight:600; font-family:'Inter',sans-serif; padding:2px 7px; cursor:pointer; transition:all .12s; }
+.tl-ft:hover { border-color:#7A8A9A; color:#8A9AAA; }
+.tl-ft.active { border-color:rgba(221,238,255,.3); color:#DDEEFF; background:rgba(221,238,255,.06); }
+.q-item { padding:10px 16px; border-bottom:1px solid #0D1520; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.q-item:last-child { border-bottom:none; }
+.q-item-left { flex:1; min-width:0; }
+.q-item-type { font-size:12px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; margin-bottom:3px; }
+.q-item-label { font-size:15px; font-weight:600; color:#DDEEFF; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.q-item-detail { font-size:13px; color:#7A8A9A; line-height:1.4; }
+.q-item-timer { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; color:#8A9AAA; white-space:nowrap; flex-shrink:0; padding-top:1px; }
+.q-view-btn { display:block; margin-top:5px; font-size:13px; font-weight:600; font-family:'Inter',sans-serif; background:transparent; border:1px solid #1A2230; border-radius:2px; color:#7A8A9A; padding:2px 8px; cursor:pointer; transition:all .12s; }
+.q-view-btn:hover { border-color:#7A8A9A; color:#DDEEFF; background:rgba(221,238,255,.04); }
+
+/* Empty state */
+.empty-state { padding:40px 20px; text-align:center; }
+.empty-title { font-size:16px; font-weight:600; color:#2A3545; margin-bottom:6px; }
+.empty-sub { font-size:14px; color:#1A2230; font-weight:500; }
+
+/* ═══════════════════════════════════
+   COA PANEL
+═══════════════════════════════════ */
+.coa-scroll { flex:1; overflow-y:auto; padding:10px 16px 0; }
+.coa-scroll::-webkit-scrollbar { width:3px; }
+.coa-scroll::-webkit-scrollbar-thumb { background:#1A2230; border-radius:2px; }
+.vt-row { display:flex; justify-content:flex-end; margin-bottom:10px; }
+.vt { display:flex; border-radius:2px; overflow:hidden; border:1px solid #1A2230; }
+.vt-btn { padding:3px 12px; font-size:14px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; border:none; background:transparent; color:#7A8A9A; transition:all .12s; }
+.vt-btn.active { background:rgba(221,238,255,.09); color:#DDEEFF; }
+.coa-lbl { font-size:13px; color:#7A8A9A; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; margin-bottom:8px; }
+
+.coa-card {
+  background:#080B0F; border-radius:3px; padding:10px 12px;
+  cursor:pointer; transition:border-color .12s; margin-bottom:6px; border:1px solid #1A2230;
+}
+.coa-card:hover:not(.expired):not(.readonly) { border-color:#243040; }
+.coa-card.sel-a, .coa-card.sel-b { border-color:rgba(221,238,255,.35); }
+.coa-card.sel-c { border-color:rgba(204,51,51,.6); }
+.coa-card.expired { opacity:.35; cursor:not-allowed; }
+.coa-card.readonly { cursor:default; }
+.card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.card-left { display:flex; align-items:center; gap:7px; }
+.coa-id   { font-size:13px; color:#7A8A9A; letter-spacing:1px; font-weight:600; }
+.coa-nm   { font-size:17px; font-weight:700; color:#DDEEFF; }
+.card-right { display:flex; align-items:center; gap:7px; }
+.risk-tag { font-size:13px; font-weight:700; padding:2px 6px; border-radius:2px; letter-spacing:.5px; text-transform:uppercase; }
+.rt-lo  { background:rgba(221,238,255,.07); border:1px solid rgba(221,238,255,.3); color:#DDEEFF; }
+.rt-med { background:rgba(221,238,255,.07); border:1px solid rgba(221,238,255,.3); color:#DDEEFF; }
+.rt-hi  { background:rgba(204,51,51,.1); border:1px solid rgba(204,51,51,.5); color:#E04444; }
+.coa-timer { font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.exp-tag { display:none; font-size:13px; font-weight:700; color:#7A8A9A; background:#1A2230; border-radius:2px; padding:2px 6px; letter-spacing:1px; }
+.coa-card.expired .exp-tag { display:inline-block; }
+.coa-card.expired .coa-timer, .coa-card.expired .risk-tag { display:none; }
+.coa-fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.cf-r { text-align:right; }
+.cf-l { font-size:13px; color:#7A8A9A; letter-spacing:.8px; text-transform:uppercase; margin-bottom:2px; font-weight:500; }
+.cf-v { font-size:16px; font-weight:600; color:#8A9AAA; }
+.cf-v.thr { color:#E04444; }
+.card-det { overflow:hidden; max-height:0; opacity:0; transition:max-height .22s ease, opacity .18s ease; }
+body.vd .card-det { max-height:260px; opacity:1; }
+.det-f { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+.intel-r { margin-top:8px; }
+.intel-l { font-size:13px; color:#7A8A9A; letter-spacing:.8px; text-transform:uppercase; margin-bottom:3px; font-weight:500; }
+.intel-v { font-size:14px; font-weight:500; color:#7A8A9A; line-height:1.55; }
+.conf-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.conf-l { font-size:13px; color:#7A8A9A; letter-spacing:.8px; text-transform:uppercase; white-space:nowrap; flex-shrink:0; font-weight:500; }
+.conf-t { flex:1; height:4px; background:#1A2230; border-radius:2px; overflow:hidden; }
+.conf-f { height:100%; border-radius:2px; }
+.conf-v { font-size:14px; font-weight:600; min-width:28px; text-align:right; flex-shrink:0; }
+
+.exp-banner { display:none; background:#100808; border:1px solid rgba(192,57,43,.3); border-radius:3px; padding:12px; margin-bottom:10px;
+  opacity:0; transform:translateY(-4px); transition:opacity .2s ease, transform .2s ease; }
+.exp-banner.vis { display:block; opacity:1; transform:translateY(0); }
+.eb-t { font-size:15px; font-weight:700; color:#C0392B; margin-bottom:3px; }
+.eb-b { font-size:14px; color:#7A8A9A; line-height:1.6; margin-bottom:9px; font-weight:500; }
+.eb-btn { width:100%; padding:8px 0; background:rgba(192,57,43,.1); border:1px solid #C0392B; border-radius:2px; color:#C0392B; font-size:15px; font-weight:700; font-family:'Inter',sans-serif; letter-spacing:.8px; cursor:pointer; }
+
+/* confirmed state */
+.confirmed-badge {
+  display:none; background:rgba(30,110,60,.15); border:1px solid rgba(30,110,60,.4);
+  border-radius:3px; padding:12px; margin-bottom:10px; text-align:center;
+  opacity:0; transform:translateY(-4px); transition:opacity .25s ease, transform .25s ease;
+}
+.confirmed-badge.vis { display:block; opacity:1; transform:translateY(0); }
+.cb-t { font-size:16px; font-weight:700; color:#2ECC71; margin-bottom:4px; }
+.cb-s { font-size:14px; color:#7A8A9A; font-weight:500; line-height:1.5; }
+
+.coa-footer { flex-shrink:0; padding:10px 16px 14px; border-top:1px solid #1A2230; }
+.sel-sum { display:none; font-size:14px; font-weight:500; color:#7A8A9A; margin-bottom:7px;
+  opacity:0; transform:translateY(-3px); transition:opacity .18s ease, transform .18s ease; }
+.sel-sum.vis { display:block; opacity:1; transform:translateY(0); }
+.sel-sum span { color:#DDEEFF; font-weight:600; }
+.note-field { width:100%; background:#080B0F; border:1px solid #1A2230; color:#8A9AAA; font-size:15px; font-weight:500; font-family:'Inter',sans-serif; padding:8px 10px; border-radius:2px; resize:none; height:50px; margin-bottom:8px; }
+.note-field:focus { outline:none; border-color:rgba(221,238,255,.25); }
+.note-field::placeholder { color:#1A2230; }
+.note-field:disabled { opacity:.4; }
+.confirm-btn { width:100%; padding:11px 0; background:transparent; border:1px solid #1A2230; border-radius:2px; color:#7A8A9A; font-size:15px; font-weight:700; font-family:'Inter',sans-serif; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; transition:all .12s; }
+.confirm-btn:hover:not(:disabled) { border-color:rgba(221,238,255,.4); color:#DDEEFF; }
+.confirm-btn.rdy { border-color:rgba(221,238,255,.4); color:#DDEEFF; }
+.confirm-btn:disabled { color:#1A2230; border-color:#1A2230; cursor:default; }
+
+/* ═══════════════════════════════════
+   CONFIRMATION DIALOG
+═══════════════════════════════════ */
+.dialog-overlay {
+  display:none; position:fixed; inset:0; z-index:500;
+  background:rgba(0,0,0,0); backdrop-filter:blur(0px);
+  align-items:center; justify-content:center;
+  transition:background .22s ease, backdrop-filter .22s ease;
+  pointer-events:none;
+}
+.dialog-overlay.vis {
+  display:flex; background:rgba(0,0,0,.72); backdrop-filter:blur(3px);
+  pointer-events:all;
+}
+.dialog-box {
+  background:#080B0F; border:1px solid #1A2230;
+  border-radius:3px; width:400px; overflow:hidden;
+  box-shadow:0 0 40px rgba(0,0,0,.8);
+  opacity:0; transform:translateY(8px) scale(0.97);
+  transition:opacity .2s ease, transform .2s ease;
+}
+.dialog-overlay.vis .dialog-box {
+  opacity:1; transform:translateY(0) scale(1);
+}
+.dialog-topbar { height:3px; background:#DDEEFF; }
+.dialog-header { padding:16px 18px 12px; border-bottom:1px solid #1A2230; display:flex; align-items:center; justify-content:space-between; }
+.dialog-title { font-size:17px; font-weight:700; color:#DDEEFF; }
+.dialog-close { background:none; border:none; color:#7A8A9A; cursor:pointer; font-size:20px; line-height:1; }
+.dialog-close:hover { color:#8A9AAA; }
+.dialog-body { padding:16px 18px; }
+.dialog-lbl { font-size:13px; color:#7A8A9A; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; margin-bottom:8px; }
+.dialog-card { background:#000; border:1px solid #1A2230; border-radius:2px; padding:10px 12px; margin-bottom:14px; border-left:3px solid #E04444; }
+.dialog-card-title { font-size:16px; font-weight:700; color:#E04444; margin-bottom:6px; }
+.dialog-card-fields { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.dialog-body-text { font-size:15px; color:#7A8A9A; line-height:1.7; font-weight:500; }
+.dialog-body-text strong { color:#DDEEFF; }
+.dialog-footer { padding:12px 18px 16px; border-top:1px solid #1A2230; display:flex; justify-content:flex-end; gap:8px; }
+.btn-cancel { padding:8px 18px; background:transparent; border:1px solid #1A2230; border-radius:2px; color:#7A8A9A; font-size:15px; font-weight:700; font-family:'Inter',sans-serif; letter-spacing:1px; cursor:pointer; transition:all .12s; }
+.btn-cancel:hover { border-color:#7A8A9A; color:#8A9AAA; }
+.btn-confirm { padding:8px 18px; background:rgba(221,238,255,.08); border:1px solid rgba(221,238,255,.4); border-radius:2px; color:#DDEEFF; font-size:15px; font-weight:700; font-family:'Inter',sans-serif; letter-spacing:1px; cursor:pointer; transition:all .12s; }
+.btn-confirm:hover { background:rgba(221,238,255,.14); }
+
+/* ═══════════════════════════════════
+   TOAST
+═══════════════════════════════════ */
+.toast-container { position:fixed; bottom:60px; left:50%; transform:translateX(-50%); z-index:400; pointer-events:none; }
+.toast { pointer-events:all; }
+.toast {
+  display:flex; align-items:center; gap:12px;
+  background:#080B0F; border:1px solid rgba(204,51,51,.5); border-left:3px solid #E04444;
+  border-radius:3px; padding:12px 16px;
+  pointer-events:all; cursor:pointer;
+  box-shadow:0 4px 24px rgba(0,0,0,.6), 0 0 20px rgba(204,51,51,.08);
+  opacity:0; transform:translateY(12px);
+  transition:opacity .3s, transform .3s;
+  min-width:320px;
+}
+.toast.vis { opacity:1; transform:translateY(0); }
+.toast-dot { width:8px; height:8px; border-radius:50%; background:#E04444; flex-shrink:0; animation:pulse 1.2s ease-in-out infinite; }
+.toast-body { flex:1; }
+.toast-title { font-size:16px; font-weight:700; color:#E04444; margin-bottom:2px; }
+.toast-sub   { font-size:14px; color:#7A8A9A; font-weight:500; }
+.toast-cta   { font-size:13px; font-weight:700; color:#DDEEFF; letter-spacing:.8px; text-transform:uppercase; white-space:nowrap; }
+
+/* ═══════════════════════════════════
+   GLOBE CENTER
+═══════════════════════════════════ */
+.globe-center { position:relative; background:#000; overflow:hidden; height:100%; }
+canvas#globe { display:block; width:100%; height:100%; }
+
+/* Filter panel */
+.filter-panel {
+  position:absolute; top:12px; left:12px; z-index:10;
+  background:rgba(0,0,0,.85); border:1px solid #1A2230;
+  border-radius:3px; padding:10px 12px; min-width:160px;
+  backdrop-filter:blur(4px);
+}
+.filter-title { font-size:13px; color:#7A8A9A; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; margin-bottom:8px; }
+.filter-group { margin-bottom:8px; }
+.filter-group-lbl { font-size:12px; color:#2A3545; letter-spacing:1px; text-transform:uppercase; font-weight:600; margin-bottom:4px; }
+.filter-item { display:flex; align-items:center; gap:7px; margin-bottom:4px; cursor:pointer; }
+.filter-item:last-child { margin-bottom:0; }
+.f-cb { width:12px; height:12px; border:1px solid #1A2230; border-radius:2px; background:transparent; cursor:pointer; accent-color:#DDEEFF; flex-shrink:0; }
+.f-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.f-lbl { font-size:14px; font-weight:500; color:#7A8A9A; }
+
+/* Stat bar */
+.stat-bar {
+  position:absolute; bottom:0; left:0; right:0; height:34px;
+  background:#000; border-top:1px solid #1A2230;
+  display:flex; align-items:center; padding:0 20px;
+}
+.si { display:flex; align-items:center; gap:8px; padding:0 14px; }
+.si:first-child { padding-left:0; }
+.sl { font-size:13px; color:#7A8A9A; letter-spacing:1px; text-transform:uppercase; font-weight:500; }
+.sv { font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
+.ss { width:1px; height:14px; background:#1A2230; flex-shrink:0; }
+
+.earth-marker { pointer-events:none; user-select:none; }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div class="topbar">
+  <div class="tb-left">
+    <span class="tb-logo">WARDEN</span>
+    <div class="tb-sep"></div>
+    <span class="tb-mission">WARDEN · SDA THREAT RESPONSE</span>
+  </div>
+  <div class="tb-right">
+    <div class="alert-pill" id="alert-pill" onclick="clickAlert()">
+      <div class="alert-dot"></div>
+      <span id="alert-text">1 ACTIVE THREAT</span>
+    </div>
+    <div class="mon-pill" id="mon-pill" onclick="clickAlert()">
+      <div class="mon-dot"></div>
+      <span id="mon-text">2 MONITORED</span>
+    </div>
+    <div class="tb-sep"></div>
+    <span class="tb-op">SGT REYES · 1 SCS/SCHRIEVER</span>
+    <div class="tb-sep"></div>
+    <span class="tb-clock" id="nav-clock">--:--:--Z</span>
+  </div>
+</div>
+
+<div class="app-layout">
+
+<!-- ════════════════════════════════════
+     LEFT — VIEW PANEL
+════════════════════════════════════ -->
+<div class="sidebar left">
+  <div class="panel-header">
+    <div class="panel-meta">
+      <div>
+        <div class="panel-title" id="left-title">SDA MONITOR</div>
+        <div class="panel-sub" id="left-sub">Select a vehicle to view details</div>
+      </div>
+      <div class="state-badge l0" id="left-badge">L0 — MONITORING</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" id="tab-veh" onclick="leftTab(this,'vehicles')">Vehicles</button>
+      <button class="tab" id="tab-soh" onclick="leftTab(this,'soh')">SOH</button>
+      <button class="tab" id="tab-tl"  onclick="leftTab(this,'timeline')">Timeline</button>
+      <button class="tab" id="tab-con" onclick="leftTab(this,'contacts')">Contacts</button>
+      <button class="tab disabled" id="tab-dev" onclick="leftTab(this,'threat-intel')">Threats</button>
+    </div>
+  </div>
+
+  <!-- VEHICLES -->
+  <div class="panel-scroll" id="lt-vehicles">
+    <div class="sec-label">Our Vehicles</div>
+
+    <!-- USA-342 -->
+    <div class="acc-group" id="vrow-usa342">
+      <div class="acc-row" id="vrow-usa342-header" onclick="selectVehicle('usa342')">
+        <div class="acc-chevron" onclick="event.stopPropagation();toggleAcc(document.getElementById('vrow-usa342-header'))"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="milsym" id="vdot-usa342">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="9" r="7.5" stroke="#00CCCC" stroke-width="1.5" fill="rgba(0,204,204,0.08)"/>
+            <line x1="9" y1="4" x2="9" y2="14" stroke="#00CCCC" stroke-width="1.2"/>
+            <line x1="4" y1="9" x2="14" y2="9" stroke="#00CCCC" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="acc-main">
+          <div class="acc-name" id="vname-usa342">USA-342</div>
+          <div class="acc-sub">LEO 518km · ISR · Nominal</div>
+        </div>
+        <div class="acc-right" id="vtag-usa342">
+          <span class="tag tag-nom">NOMINAL</span>
+        </div>
+      </div>
+      <div class="acc-body" id="vbody-usa342">
+        <div class="acc-fields">
+          <div><div class="fl">Designation</div><div class="fv hi">USA-342</div></div>
+          <div><div class="fl">Owner</div><div class="fv">USSF / NRO</div></div>
+          <div><div class="fl">Orbit</div><div class="fv">LEO 518km</div></div>
+          <div><div class="fl">Inclination</div><div class="fv">97.4°</div></div>
+          <div><div class="fl">Mission</div><div class="fv">ISR</div></div>
+          <div><div class="fl">Sensor Suite</div><div class="fv">EO/IR · SAR</div></div>
+          <div id="link-usa342-threat" style="display:none;grid-column:1/-1">
+            <div class="fl" style="color:#E04444">Threatening Vehicle</div>
+            <div class="fv" style="color:#E04444;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="jumpToVehicle('vrow-48821-header','vbody-48821')">NORAD-48821 →</div>
+          </div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="stat-mini"><div class="sm-row"><span class="sm-lbl">State of Health</span><span class="sm-val" style="color:#DDEEFF">98%</span></div><div class="bar-t"><div class="bar-f" style="width:98%;background:#2A4A3A"></div></div></div>
+        <div class="stat-mini" style="padding-top:0"><div class="sm-row"><span class="sm-lbl">Fuel Reserve</span><span class="sm-val" style="color:#DDEEFF">74%</span></div><div class="bar-t"><div class="bar-f" style="width:74%;background:#2A3A4A"></div></div></div>
+        <div class="acc-div"></div>
+        <div class="cc">
+          <div><div class="fl">Next Contact · Schriever</div><div class="fv">Ka-Band</div></div>
+          <div class="cc-countdown" id="ct-usa342">T-00:18:22</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USA-289 -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="selectVehicle('usa289')">
+        <div class="acc-chevron" onclick="event.stopPropagation();toggleAcc(this.parentElement)"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="milsym">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="9" r="7.5" stroke="#00CCCC" stroke-width="1.5" fill="rgba(0,204,204,0.08)"/>
+            <line x1="9" y1="4" x2="9" y2="14" stroke="#00CCCC" stroke-width="1.2"/>
+            <line x1="4" y1="9" x2="14" y2="9" stroke="#00CCCC" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="acc-main"><div class="acc-name">USA-289</div><div class="acc-sub">LEO 503km · SIGINT · Nominal</div></div>
+        <div class="acc-right"><span class="tag tag-nom">NOMINAL</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Designation</div><div class="fv hi">USA-289</div></div>
+          <div><div class="fl">Owner</div><div class="fv">NSA / USSF</div></div>
+          <div><div class="fl">Orbit</div><div class="fv">LEO 503km</div></div>
+          <div><div class="fl">Sensor Suite</div><div class="fv">SIGINT Array</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="stat-mini"><div class="sm-row"><span class="sm-lbl">State of Health</span><span class="sm-val" style="color:#DDEEFF">94%</span></div><div class="bar-t"><div class="bar-f" style="width:94%;background:#2A4A3A"></div></div></div>
+        <div class="stat-mini" style="padding-top:0"><div class="sm-row"><span class="sm-lbl">Fuel Reserve</span><span class="sm-val" style="color:#DDEEFF">61%</span></div><div class="bar-t"><div class="bar-f" style="width:61%;background:#2A3A4A"></div></div></div>
+        <div class="acc-div"></div>
+        <div class="cc"><div><div class="fl">Next Contact · Vandenberg</div><div class="fv">S-Band</div></div><div class="cc-countdown" id="ct-usa289">T-00:43:10</div></div>
+      </div>
+    </div>
+
+    <!-- USA-301 -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="selectVehicle('usa301')">
+        <div class="acc-chevron" onclick="event.stopPropagation();toggleAcc(this.parentElement)"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="milsym">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="9" r="7.5" stroke="#00CCCC" stroke-width="1.5" fill="rgba(0,204,204,0.08)"/>
+            <line x1="9" y1="4" x2="9" y2="14" stroke="#00CCCC" stroke-width="1.2"/>
+            <line x1="4" y1="9" x2="14" y2="9" stroke="#00CCCC" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="acc-main"><div class="acc-name">USA-301</div><div class="acc-sub">LEO 534km · EO/IR · Nominal</div></div>
+        <div class="acc-right"><span class="tag tag-nom">NOMINAL</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Designation</div><div class="fv hi">USA-301</div></div>
+          <div><div class="fl">Owner</div><div class="fv">NRO / USSF</div></div>
+          <div><div class="fl">Orbit</div><div class="fv">LEO 534km</div></div>
+          <div><div class="fl">Sensor Suite</div><div class="fv">EO · MWIR · LWIR</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="stat-mini"><div class="sm-row"><span class="sm-lbl">State of Health</span><span class="sm-val" style="color:#DDEEFF">99%</span></div><div class="bar-t"><div class="bar-f" style="width:99%;background:#2A4A3A"></div></div></div>
+        <div class="stat-mini" style="padding-top:0"><div class="sm-row"><span class="sm-lbl">Fuel Reserve</span><span class="sm-val" style="color:#DDEEFF">88%</span></div><div class="bar-t"><div class="bar-f" style="width:88%;background:#2A3A4A"></div></div></div>
+        <div class="acc-div"></div>
+        <div class="cc"><div><div class="fl">Next Contact · Schriever</div><div class="fv">Ka-Band</div></div><div class="cc-countdown" id="ct-usa301">T-01:04:45</div></div>
+      </div>
+    </div>
+
+    <div class="sec-label" style="margin-top:4px">Foreign Vehicles</div>
+
+    <!-- NORAD-48821 -->
+    <div class="acc-group">
+      <div class="acc-row" id="vrow-48821-header" onclick="selectVehicle('n48821')">
+        <div class="acc-chevron" onclick="event.stopPropagation();toggleAcc(document.getElementById('vrow-48821-header'))"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="milsym" id="vdot-48821">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" id="milsvg-48821">
+            <polygon points="9,1.5 16.5,9 9,16.5 1.5,9" stroke="#E04444" stroke-width="1.5" fill="rgba(204,51,51,0.08)"/>
+            <line x1="9" y1="5" x2="9" y2="13" stroke="#E04444" stroke-width="1.2"/>
+            <line x1="5" y1="9" x2="13" y2="9" stroke="#E04444" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="acc-main">
+          <div class="acc-name" id="vname-48821">NORAD-48821</div>
+          <div class="acc-sub">LEO 520km · Inspector · PRC/CNSA</div>
+        </div>
+        <div class="acc-right" id="vtag-48821"><span class="tag tag-nom">TRACKED</span></div>
+      </div>
+      <div class="acc-body" id="vbody-48821">
+        <div class="acc-fields">
+          <div><div class="fl">NORAD ID</div><div class="fv" id="n48821-id">48821</div></div>
+          <div><div class="fl">Origin</div><div class="fv">PRC / CNSA</div></div>
+          <div><div class="fl">Orbit</div><div class="fv">LEO 520km</div></div>
+          <div><div class="fl">Class</div><div class="fv">Inspector</div></div>
+          <div><div class="fl">Prior Maneuvers</div><div class="fv">0</div></div>
+          <div><div class="fl">DEV Score</div><div class="fv" id="n48821-dev">2 / 10</div></div>
+          <div id="link-48821-asset" style="display:none;grid-column:1/-1">
+            <div class="fl" style="color:#DDEEFF">Asset at Risk</div>
+            <div class="fv" style="color:#DDEEFF;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="jumpToVehicle('vrow-usa342-header','vbody-usa342')">USA-342 →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cosmos-2558 -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="selectVehicle('cosmos2558')">
+        <div class="acc-chevron" onclick="event.stopPropagation();toggleAcc(this.parentElement)"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="milsym">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="9,1.5 16.5,9 9,16.5 1.5,9" stroke="#DDEEFF" stroke-width="1.2" stroke-dasharray="2.5 2" fill="rgba(221,238,255,0.04)"/>
+            <text x="9" y="13" text-anchor="middle" font-size="8" font-weight="700" font-family="Inter,sans-serif" fill="#DDEEFF">?</text>
+          </svg>
+        </div>
+        <div class="acc-main"><div class="acc-name" style="color:#DDEEFF">Cosmos-2558</div><div class="acc-sub">LEO 541km · Inspector · RU/VKS</div></div>
+        <div class="acc-right"><span class="tag tag-mon">MONITOR</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">NORAD ID</div><div class="fv">53807</div></div>
+          <div><div class="fl">Origin</div><div class="fv">Russia / VKS</div></div>
+          <div><div class="fl">Orbit</div><div class="fv">LEO 541km</div></div>
+          <div><div class="fl">DEV Score</div><div class="fv" style="color:#4A8FD4">5 / 10</div></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /lt-vehicles -->
+
+  <!-- SOH -->
+  <div class="panel-scroll" id="lt-soh" style="display:none">
+
+    <!-- USA-342 -->
+    <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+      <span>USA-342</span><span style="font-size:9px;color:#4A5A6A;letter-spacing:.5px">ISR · LEO 518km</span>
+    </div>
+    <div style="padding:0 16px 4px">
+
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:9px;color:#4A5A6A;text-transform:uppercase;letter-spacing:.8px;font-weight:500">Overall SOH</span>
+          <span style="font-size:11px;font-weight:700;color:#DDEEFF">98%</span>
+        </div>
+        <div class="bar-t"><div class="bar-f" style="width:98%;background:#2A4A3A"></div></div>
+      </div>
+
+      <div class="soh-grid">
+        <div class="soh-freshness">
+          <span class="soh-fresh-ts">LAST UPLINK · 03:18:44Z · 22 MIN AGO</span>
+          <span class="soh-valid med">97% VALID</span>
+        </div>
+        <div class="soh-row"><span class="soh-lbl">Propulsion</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Fuel Reserve</span><span class="soh-val">74%</span></div>
+        <div class="soh-row"><span class="soh-lbl">EO Sensor</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">IR Sensor</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">SAR Array</span><span class="soh-val soh-warn">Degraded — 2 of 8 elements offline</span></div>
+        <div class="soh-row"><span class="soh-lbl">Power (Solar)</span><span class="soh-val">103% nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Battery</span><span class="soh-val">91%</span></div>
+        <div class="soh-row"><span class="soh-lbl">Thermal</span><span class="soh-val">Nominal · 18°C</span></div>
+        <div class="soh-row"><span class="soh-lbl">ADCS</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">C2 Link</span><span class="soh-val">Nominal · –82 dBm</span></div>
+        <div class="soh-row"><span class="soh-lbl">Data Recorder</span><span class="soh-val">62% capacity</span></div>
+        <div class="soh-row"><span class="soh-lbl">Crypto / KMI</span><span class="soh-val">Valid · expires 14d</span></div>
+        <div class="soh-row"><span class="soh-lbl">Last Uplink</span><span class="soh-val">03:18:44Z</span></div>
+        <div class="soh-row"><span class="soh-lbl">Uptime</span><span class="soh-val">847 days</span></div>
+      </div>
+    </div>
+
+    <div class="acc-div" style="margin:8px 0 4px"></div>
+
+    <!-- USA-289 -->
+    <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+      <span>USA-289</span><span style="font-size:9px;color:#4A5A6A;letter-spacing:.5px">SIGINT · LEO 503km</span>
+    </div>
+    <div style="padding:0 16px 4px">
+
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:9px;color:#4A5A6A;text-transform:uppercase;letter-spacing:.8px;font-weight:500">Overall SOH</span>
+          <span style="font-size:11px;font-weight:700;color:#DDEEFF">94%</span>
+        </div>
+        <div class="bar-t"><div class="bar-f" style="width:94%;background:#2A4A3A"></div></div>
+      </div>
+
+      <div class="soh-grid">
+        <div class="soh-freshness">
+          <span class="soh-fresh-ts">LAST UPLINK · 03:41:02Z · 0 MIN AGO</span>
+          <span class="soh-valid hi">100% VALID</span>
+        </div>
+        <div class="soh-row"><span class="soh-lbl">Propulsion</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Fuel Reserve</span><span class="soh-val soh-warn">61% — below 65% threshold</span></div>
+        <div class="soh-row"><span class="soh-lbl">SIGINT Array</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Wideband Rcvr</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Narrowband Rcvr</span><span class="soh-val soh-warn">Intermittent — 3 dropouts / 6hr</span></div>
+        <div class="soh-row"><span class="soh-lbl">Power (Solar)</span><span class="soh-val">98% nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Battery</span><span class="soh-val">84%</span></div>
+        <div class="soh-row"><span class="soh-lbl">Thermal</span><span class="soh-val">Nominal · 21°C</span></div>
+        <div class="soh-row"><span class="soh-lbl">ADCS</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">C2 Link</span><span class="soh-val">Nominal · –79 dBm</span></div>
+        <div class="soh-row"><span class="soh-lbl">Data Recorder</span><span class="soh-val">44% capacity</span></div>
+        <div class="soh-row"><span class="soh-lbl">Crypto / KMI</span><span class="soh-val soh-warn">Expires in 3 days</span></div>
+        <div class="soh-row"><span class="soh-lbl">Last Uplink</span><span class="soh-val">03:41:02Z</span></div>
+        <div class="soh-row"><span class="soh-lbl">Uptime</span><span class="soh-val">1,204 days</span></div>
+      </div>
+    </div>
+
+    <div class="acc-div" style="margin:8px 0 4px"></div>
+
+    <!-- USA-301 -->
+    <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;padding-right:16px">
+      <span>USA-301</span><span style="font-size:9px;color:#4A5A6A;letter-spacing:.5px">EO/IR · LEO 534km</span>
+    </div>
+    <div style="padding:0 16px 14px">
+
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:9px;color:#4A5A6A;text-transform:uppercase;letter-spacing:.8px;font-weight:500">Overall SOH</span>
+          <span style="font-size:11px;font-weight:700;color:#DDEEFF">99%</span>
+        </div>
+        <div class="bar-t"><div class="bar-f" style="width:99%;background:#2A4A3A"></div></div>
+      </div>
+
+      <div class="soh-grid">
+        <div class="soh-freshness">
+          <span class="soh-fresh-ts">LAST UPLINK · 03:07:18Z · 34 MIN AGO</span>
+          <span class="soh-valid med">94% VALID</span>
+        </div>
+        <div class="soh-row"><span class="soh-lbl">Propulsion</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Fuel Reserve</span><span class="soh-val">88%</span></div>
+        <div class="soh-row"><span class="soh-lbl">EO Camera</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">MWIR Sensor</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">LWIR Sensor</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Power (Solar)</span><span class="soh-val">101% nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">Battery</span><span class="soh-val">97%</span></div>
+        <div class="soh-row"><span class="soh-lbl">Thermal</span><span class="soh-val">Nominal · 16°C</span></div>
+        <div class="soh-row"><span class="soh-lbl">ADCS</span><span class="soh-val">Nominal</span></div>
+        <div class="soh-row"><span class="soh-lbl">C2 Link</span><span class="soh-val">Nominal · –84 dBm</span></div>
+        <div class="soh-row"><span class="soh-lbl">Data Recorder</span><span class="soh-val">28% capacity</span></div>
+        <div class="soh-row"><span class="soh-lbl">Crypto / KMI</span><span class="soh-val">Valid · expires 31d</span></div>
+        <div class="soh-row"><span class="soh-lbl">Last Uplink</span><span class="soh-val">03:07:18Z</span></div>
+        <div class="soh-row"><span class="soh-lbl">Uptime</span><span class="soh-val">312 days</span></div>
+      </div>
+    </div>
+
+  </div><!-- /lt-soh -->
+
+  <!-- TIMELINE -->
+  <div class="panel-scroll" id="lt-timeline" style="display:none">
+    <div id="tl-empty" class="empty-state">
+      <div class="empty-title">No Vehicle Selected</div>
+      <div class="empty-sub">Click any vehicle to view its activity log</div>
+    </div>
+    <div id="tl-content" style="display:none">
+      <div style="padding:10px 16px 6px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#DDEEFF" id="tl-veh-name">—</div>
+          <div style="font-size:9px;color:#4A5A6A;margin-top:1px" id="tl-veh-sub">—</div>
+        </div>
+        <div style="display:flex;gap:4px" id="tl-filters">
+          <button class="tl-ft active" data-type="all"    onclick="setTLFilter(this,'all')">All</button>
+          <button class="tl-ft"        data-type="maneuver" onclick="setTLFilter(this,'maneuver')">Burns</button>
+          <button class="tl-ft"        data-type="contact"  onclick="setTLFilter(this,'contact')">Uplinks</button>
+          <button class="tl-ft"        data-type="anomaly"  onclick="setTLFilter(this,'anomaly')">Alerts</button>
+        </div>
+      </div>
+      <div class="acc-div"></div>
+      <div id="tl-log" style="padding:10px 16px 16px 32px"></div>
+    </div>
+  </div><!-- /lt-timeline -->
+
+  <!-- CONTACTS -->
+  <div class="panel-scroll" id="lt-contacts" style="display:none">
+
+    <div class="sec-label">AFSCN — Air Force Satellite Control Network</div>
+    <!-- Schriever -->
+    <div class="acc-group">
+      <div class="acc-row" id="gs-schriever" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A8FD4"></div>
+        <div class="acc-main"><div class="acc-name">Schriever SFB</div><div class="acc-sub">Colorado Springs, CO · 50th Space Wing</div></div>
+        <div class="acc-right"><span class="tag tag-nom">ACTIVE</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">38.8°N 104.5°W</div></div>
+          <div><div class="fl">Network</div><div class="fv">AFSCN</div></div>
+          <div><div class="fl">Antenna</div><div class="fv">26m Dish</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / Ka</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">2.4 Gbps</div></div>
+          <div><div class="fl">Elevation Mask</div><div class="fv">5°</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-342</div></div><div class="cc-countdown">T-00:18:22</div></div>
+        <div class="cc" style="margin-top:0"><div><div class="fl">Vehicle</div><div class="fv hi">USA-301</div></div><div class="cc-countdown">T-01:04:45</div></div>
+      </div>
+    </div>
+    <!-- Vandenberg -->
+    <div class="acc-group">
+      <div class="acc-row" id="gs-vandenberg" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A8FD4"></div>
+        <div class="acc-main"><div class="acc-name">Vandenberg SFB</div><div class="acc-sub">Lompoc, CA · 30th Space Wing</div></div>
+        <div class="acc-right"><span class="tag tag-nom">ACTIVE</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">34.7°N 120.5°W</div></div>
+          <div><div class="fl">Network</div><div class="fv">AFSCN</div></div>
+          <div><div class="fl">Antenna</div><div class="fv">18m Dish</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">1.2 Gbps</div></div>
+          <div><div class="fl">Elevation Mask</div><div class="fv">5°</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-289</div></div><div class="cc-countdown">T-00:43:10</div></div>
+      </div>
+    </div>
+    <!-- Thule -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A5A6A"></div>
+        <div class="acc-main"><div class="acc-name">Thule Air Base</div><div class="acc-sub">Pituffik, Greenland · POGO Node</div></div>
+        <div class="acc-right"><span class="tag tag-nom">STANDBY</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">76.5°N 68.7°W</div></div>
+          <div><div class="fl">Network</div><div class="fv">AFSCN / POGO</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S-Band</div></div>
+          <div><div class="fl">Elevation Mask</div><div class="fv">3°</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-342</div></div><div class="cc-countdown">T-02:31:08</div></div>
+      </div>
+    </div>
+    <!-- Diego Garcia -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A5A6A"></div>
+        <div class="acc-main"><div class="acc-name">Diego Garcia</div><div class="acc-sub">British Indian Ocean Territory · POGO</div></div>
+        <div class="acc-right"><span class="tag tag-nom">STANDBY</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">7.3°S 72.4°E</div></div>
+          <div><div class="fl">Network</div><div class="fv">AFSCN / POGO</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X</div></div>
+          <div><div class="fl">Elevation Mask</div><div class="fv">5°</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-301</div></div><div class="cc-countdown">T-03:14:20</div></div>
+      </div>
+    </div>
+
+    <div class="sec-label" style="margin-top:6px">KSAT — Kongsberg Satellite Services</div>
+    <!-- Svalbard -->
+    <div class="acc-group">
+      <div class="acc-row" id="gs-svalbard" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A8FD4"></div>
+        <div class="acc-main"><div class="acc-name">KSAT Svalbard</div><div class="acc-sub">Longyearbyen, Norway · 78°N</div></div>
+        <div class="acc-right"><span class="tag tag-nom">ACTIVE</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">78.2°N 15.6°E</div></div>
+          <div><div class="fl">Network</div><div class="fv">KSAT</div></div>
+          <div><div class="fl">Antennas</div><div class="fv">7 × Dish</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X / Ka / Ku</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">3.2 Gbps</div></div>
+          <div><div class="fl">Polar Coverage</div><div class="fv">All LEO passes</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-342</div></div><div class="cc-countdown">T-00:52:14</div></div>
+        <div class="cc" style="margin-top:0"><div><div class="fl">Vehicle</div><div class="fv hi">USA-289</div></div><div class="cc-countdown">T-01:22:40</div></div>
+        <div class="cc" style="margin-top:0"><div><div class="fl">Vehicle</div><div class="fv hi">USA-301</div></div><div class="cc-countdown">T-01:38:00</div></div>
+      </div>
+    </div>
+    <!-- Troll -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A8FD4"></div>
+        <div class="acc-main"><div class="acc-name">KSAT Troll</div><div class="acc-sub">Queen Maud Land, Antarctica · 72°S</div></div>
+        <div class="acc-right"><span class="tag tag-nom">ACTIVE</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">72.0°S 2.5°E</div></div>
+          <div><div class="fl">Network</div><div class="fv">KSAT</div></div>
+          <div><div class="fl">Antennas</div><div class="fv">4 × Dish</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">1.6 Gbps</div></div>
+          <div><div class="fl">Polar Coverage</div><div class="fv">All LEO passes</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-289</div></div><div class="cc-countdown">T-01:12:44</div></div>
+        <div class="cc" style="margin-top:0"><div><div class="fl">Vehicle</div><div class="fv hi">USA-342</div></div><div class="cc-countdown">T-02:08:30</div></div>
+      </div>
+    </div>
+    <!-- Grimstad -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A5A6A"></div>
+        <div class="acc-main"><div class="acc-name">KSAT Grimstad</div><div class="acc-sub">Norway · KSAT HQ</div></div>
+        <div class="acc-right"><span class="tag tag-nom">STANDBY</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">58.3°N 8.6°E</div></div>
+          <div><div class="fl">Network</div><div class="fv">KSAT</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X / Ka</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">1.8 Gbps</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-301</div></div><div class="cc-countdown">T-02:48:30</div></div>
+      </div>
+    </div>
+    <!-- Hawaii -->
+    <div class="acc-group">
+      <div class="acc-row" id="gs-hawaii" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A5A6A"></div>
+        <div class="acc-main"><div class="acc-name">KSAT Hawaii</div><div class="acc-sub">Kauai, HI · Mid-Pacific Node</div></div>
+        <div class="acc-right"><span class="tag tag-nom">STANDBY</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">22.1°N 159.4°W</div></div>
+          <div><div class="fl">Network</div><div class="fv">KSAT</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">1.2 Gbps</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-289</div></div><div class="cc-countdown">T-02:34:55</div></div>
+      </div>
+    </div>
+    <!-- Singapore -->
+    <div class="acc-group">
+      <div class="acc-row" onclick="toggleAcc(this)">
+        <div class="acc-chevron"><svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="acc-dot" style="background:#4A5A6A"></div>
+        <div class="acc-main"><div class="acc-name">KSAT Singapore</div><div class="acc-sub">Singapore · Asia-Pacific Hub</div></div>
+        <div class="acc-right"><span class="tag tag-nom">STANDBY</span></div>
+      </div>
+      <div class="acc-body">
+        <div class="acc-fields">
+          <div><div class="fl">Location</div><div class="fv">1.3°N 103.8°E</div></div>
+          <div><div class="fl">Network</div><div class="fv">KSAT</div></div>
+          <div><div class="fl">Bands</div><div class="fv">S / X / Ka</div></div>
+          <div><div class="fl">Data Rate</div><div class="fv">2.0 Gbps</div></div>
+        </div>
+        <div class="acc-div"></div>
+        <div class="sec-label" style="padding-top:8px">Scheduled Contacts</div>
+        <div class="cc"><div><div class="fl">Vehicle</div><div class="fv hi">USA-301</div></div><div class="cc-countdown">T-04:02:10</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- DEVIATION -->
+  <div class="panel-scroll" id="lt-threat-intel" style="display:none">
+    <div id="dev-empty" class="empty-state">
+      <div class="empty-title">No Vehicle Selected</div>
+      <div class="empty-sub">Select a vehicle with an active deviation to view analysis</div>
+    </div>
+    <div id="dev-content" style="display:none">
+
+      <!-- Affiliation context + relationship header -->
+      <div style="padding:10px 16px 0;border-bottom:1px solid #1A2230;margin-bottom:0">
+        <!-- Asset vehicle row (selected, on top) -->
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #0D1520">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <circle cx="9" cy="9" r="7.5" stroke="#00CCCC" stroke-width="1.5" fill="rgba(0,204,204,0.08)"/>
+            <line x1="9" y1="4" x2="9" y2="14" stroke="#00CCCC" stroke-width="1.2"/>
+            <line x1="4" y1="9" x2="14" y2="9" stroke="#00CCCC" stroke-width="1.2"/>
+          </svg>
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:700;color:#00CCCC">USA-342</div>
+            <div style="font-size:8px;color:#4A5A6A;letter-spacing:.4px">FRIENDLY · USSF/NRO · ISR · LEO 518km</div>
+          </div>
+          <span style="font-size:8px;font-weight:700;color:#DDEEFF;letter-spacing:.5px;background:rgba(221,238,255,0.06);padding:2px 6px;border:1px solid rgba(221,238,255,0.15);border-radius:2px">SELECTED</span>
+        </div>
+        <!-- Arrow connector -->
+        <div style="text-align:center;padding:3px 0;font-size:9px;color:#2A3545;letter-spacing:.5px">↑ being approached by</div>
+        <!-- Threat vehicle row (deviating object, below) -->
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <polygon points="9,1.5 16.5,9 9,16.5 1.5,9" stroke="#E04444" stroke-width="1.5" fill="rgba(204,51,51,0.08)"/>
+            <line x1="9" y1="5" x2="9" y2="13" stroke="#E04444" stroke-width="1.2"/>
+            <line x1="5" y1="9" x2="13" y2="9" stroke="#E04444" stroke-width="1.2"/>
+          </svg>
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:700;color:#E04444">NORAD-48821</div>
+            <div style="font-size:8px;color:#4A5A6A;letter-spacing:.4px">HOSTILE · PRC/CNSA · Inspector · LEO 520km</div>
+          </div>
+          <span style="font-size:8px;font-weight:700;color:#E04444;letter-spacing:.5px;background:rgba(204,51,51,0.1);padding:2px 6px;border:1px solid rgba(204,51,51,0.25);border-radius:2px">THREAT · DEV 9</span>
+        </div>
+      </div>
+
+      <div class="dev-block">
+        <div class="dev-header">
+          <div><div class="dev-lbl">DEV Score</div><div class="dev-num">9</div><div class="dev-tier">Escalate · DEV 9–10</div></div>
+          <div class="dev-right"><div class="dev-lbl">Pc (Collision)</div><div class="pc-val">0.013</div><div style="font-size:9px;color:#4A5A6A;margin-top:2px">Pc &gt; 1/100 threshold</div></div>
+        </div>
+        <div class="pc-scale">
+          <div class="pc-seg sl"></div><div class="pc-seg sl"></div><div class="pc-seg sl"></div>
+          <div class="pc-seg sm2"></div><div class="pc-seg sm2"></div><div class="pc-seg sm2"></div>
+          <div class="pc-seg sh"></div><div class="pc-seg sh"></div><div class="pc-seg sh"></div><div class="pc-seg sh"></div>
+        </div>
+        <div class="pc-legend"><span>Monitor 1–3</span><span>Investigate 4–6</span><span>Elevate 7–8</span><span>Escalate 9–10</span></div>
+        <div class="sig-row">
+          <div style="flex:1"><div class="fl" style="margin-bottom:2px">Score Calculation</div><div class="fv" style="font-size:11px;padding:0">Pc=0.013 · Δbaseline +0.82 · ṙ +0.34 km/s</div></div>
+          <button class="sig-btn" id="sb-dev" onclick="toggleMath('dev')">Σ</button>
+        </div>
+        <div class="math-block" id="mb-dev">
+          <div class="math-ttl">DEV Score</div>
+          <div class="math-ln">Step 1: <em>Pc = f(miss distance, Σ_pos) = 0.013</em></div>
+          <div class="math-ln">Step 2: <em>Pc &gt; 1/100 → DEV 9–10 · Escalate</em></div>
+          <div class="math-ln res">Step 3: <em>Weighted by Δbaseline (+0.82), prior burns (0), ṙ (+0.34) → DEV 9</em></div>
+        </div>
+      </div>
+      <div class="sec-label">Activity Comparison</div>
+      <div class="bar-row">
+        <div class="bar-meta">
+          <span style="display:flex;align-items:center;gap:6px"><span class="fl" style="padding:0">Baseline Activity</span><button class="sig-btn" style="width:16px;height:16px;font-size:8px" id="sb-base" onclick="toggleMath('base')">Σ</button></span>
+          <span class="fv" style="font-size:11px;padding:0">0.12</span>
+        </div>
+        <div class="bar-tlg"><div class="bar-flg" style="width:12%;background:#1E3040"></div></div>
+      </div>
+      <div class="math-block" id="mb-base" style="margin:0 16px 10px">
+        <div class="math-ttl">Baseline Activity Index</div>
+        <div class="math-ln">Total Δv: <em>0.034 km/s (92 days)</em></div>
+        <div class="math-ln res">Index = 0.034 / 0.28 = <em>0.12</em></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-meta">
+          <span style="display:flex;align-items:center;gap:6px"><span class="fl" style="padding:0">Current Activity</span><button class="sig-btn" style="width:16px;height:16px;font-size:8px" id="sb-cur" onclick="toggleMath('cur')">Σ</button></span>
+          <span class="fv thr" style="font-size:11px;padding:0">0.94</span>
+        </div>
+        <div class="bar-tlg"><div class="bar-flg" style="width:94%;background:#E04444"></div></div>
+      </div>
+      <div class="math-block" id="mb-cur" style="margin:0 16px 10px">
+        <div class="math-ttl">Current Activity Index</div>
+        <div class="math-ln">Observed Δv: <em>0.263 km/s</em></div>
+        <div class="math-ln res">Index = 0.263 / 0.28 = <em>0.94 · Δ +0.82</em></div>
+      </div>
+      <div class="sec-label">Object Metadata</div>
+      <div class="field-grid">
+        <div><div class="fl">Origin</div><div class="fv thr">PRC / CNSA</div></div>
+        <div><div class="fl">Class</div><div class="fv">Inspector</div></div>
+        <div><div class="fl">Observation</div><div class="fv">92 days</div></div>
+        <div><div class="fl">Prior Maneuvers</div><div class="fv">0</div></div>
+        <div><div class="fl">Closing Velocity</div><div class="fv thr">+0.34 km/s</div></div>
+        <div><div class="fl">Current Range</div><div class="fv thr">47 km</div></div>
+      </div>
+      <div class="sec-label">Event Timeline</div>
+      <div class="tl">
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#E04444"></div><div class="tl-t">03:41:22Z</div><div class="tl-tx">Baseline deviation detected, burn sequence initiated</div></div>
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#4A8FD4"></div><div class="tl-t">03:41:45Z</div><div class="tl-tx">WARDEN retasked 3 sensors</div></div>
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#4A5A6A"></div><div class="tl-t">03:42:10Z</div><div class="tl-tx">Velocity delta confirmed</div></div>
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#C0392B"></div><div class="tl-t">03:44:01Z</div><div class="tl-tx">L1 alert fired</div></div>
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#2A6A3A"></div><div class="tl-t">03:47:33Z</div><div class="tl-tx">SGT REYES escalated to L2</div></div>
+        <div class="tl-i"><div class="tl-line"></div><div class="tl-pip" style="background:#DDEEFF"></div><div class="tl-t">03:52:44Z</div><div class="tl-tx">Operator reviewing COA options</div></div>
+        <div class="tl-i"><div class="tl-pip" style="background:#1A2230"></div><div class="tl-t">03:55:10Z</div><div class="tl-tx">Awaiting COA selection</div></div>
+      </div>
+    </div>
+  </div>
+</div><!-- /left -->
+
+<!-- ════════════════════════════════════
+     CENTER — GLOBE
+════════════════════════════════════ -->
+<div class="globe-center">
+  <div id="globe-mount" style="position:absolute;inset:0;bottom:34px;"></div>
+  <canvas id="globe" style="display:none;position:absolute;top:0;left:0;right:0;bottom:34px;width:100%;height:calc(100% - 34px);z-index:5;"></canvas>
+
+  <!-- Sidebar collapse toggles -->
+  <button class="col-btn left open" id="col-left" onclick="toggleSidebar('left')" title="Toggle left panel">
+    <svg width="6" height="10" viewBox="0 0 6 10"><path d="M5 1L1 5l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="col-btn right open" id="col-right" onclick="toggleSidebar('right')" title="Toggle right panel">
+    <svg width="6" height="10" viewBox="0 0 6 10"><path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+
+  <!-- Filter panel -->
+  <div class="filter-panel">
+    <div class="filter-title">Visualizer Filters</div>
+    <div style="position:relative;margin-bottom:10px;">
+      <input id="sat-search" type="text" placeholder="Search vehicle…" autocomplete="off"
+        style="width:100%;background:#000;border:1px solid #1A2230;border-radius:2px;color:#DDEEFF;font-size:10px;font-weight:500;font-family:'Inter',sans-serif;padding:5px 8px;outline:none;"
+        oninput="onSatSearch(this.value)" onfocus="showSuggestions()" onblur="hideSuggestions()" />
+      <div id="sat-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#080B0F;border:1px solid #1A2230;border-radius:0 0 2px 2px;z-index:20;max-height:140px;overflow-y:auto;"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-group-lbl">Our Assets</div>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-ours" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#4A8FD4"></div><span class="f-lbl">USSF Vehicles</span></label>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-gs" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#2A5A8A"></div><span class="f-lbl">Ground Stations</span></label>
+    </div>
+    <div class="filter-group">
+      <div class="filter-group-lbl">Status</div>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-threat" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#E04444"></div><span class="f-lbl">Threat</span></label>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-monitor" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#4A8FD4"></div><span class="f-lbl">Monitor</span></label>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-nom" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#3A4A5A"></div><span class="f-lbl">Nominal</span></label>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-atrisk" checked onchange="updateGlobeLayers()"><div class="f-dot" style="background:#DDEEFF"></div><span class="f-lbl">Asset at Risk</span></label>
+    </div>
+    <div class="filter-group" style="margin-bottom:0">
+      <div class="filter-group-lbl">Overlay</div>
+      <label class="filter-item"><input type="checkbox" class="f-cb" id="f-traj" onchange="updateGlobeLayers()"><div class="f-dot" style="background:#4A5A6A;border:1px dashed #8A9AAA"></div><span class="f-lbl">Trajectory</span></label>
+    </div>
+  </div>
+
+  <div class="stat-bar">
+    <div class="si" title="Current separation distance between this vehicle and nearest tracked object of interest">
+      <span class="sl">Range</span><span class="sv" id="s-range" style="color:#8A9AAA">—</span>
+    </div>
+    <div class="ss"></div>
+    <div class="si" title="Rate of change in separation — positive = closing, negative = opening">
+      <span class="sl">Closing Vel</span><span class="sv" id="s-closing" style="color:#8A9AAA">—</span>
+    </div>
+    <div class="ss"></div>
+    <div class="si" title="Probability of Collision — computed from miss distance and positional covariance. Orange above 1/1000">
+      <span class="sl">Pc</span><span class="sv" id="s-pc" style="color:#8A9AAA">—</span>
+    </div>
+    <div class="ss"></div>
+    <div class="si" title="Deviation Score 0–10 — measures how far current behavior departs from 90-day baseline. Orange at 7+">
+      <span class="sl">DEV</span><span class="sv" id="s-dev" style="color:#8A9AAA">—</span>
+    </div>
+    <div class="ss"></div>
+    <div class="si" title="Total objects being actively tracked by WARDEN in this session">
+      <span class="sl">Tracked</span><span class="sv" id="s-tracked" style="color:#8A9AAA">—</span>
+    </div>
+    <div class="ss"></div>
+    <div class="si" title="Open L1 or L2 alerts requiring operator action">
+      <span class="sl">Alerts</span><span class="sv" id="s-alerts" style="color:#8A9AAA">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     RIGHT — ACTION PANEL
+════════════════════════════════════ -->
+<div class="sidebar right" style="display:flex;flex-direction:column">
+  <div class="panel-header">
+    <div class="panel-meta">
+      <div>
+        <div class="panel-title" id="right-title">COA SELECTION</div>
+        <div class="panel-sub" id="right-sub">No threat active — monitoring</div>
+      </div>
+      <div class="state-badge l0" id="right-badge">L0 — MONITORING</div>
+    </div>
+    <div class="tabs">
+      <button class="tab" id="tab-queue" onclick="rightTab(this,'queue')">Queue</button>
+      <button class="tab active" id="tab-coa" onclick="rightTab(this,'coa')">COA</button>
+    </div>
+  </div>
+
+  <!-- QUEUE PANEL -->
+  <div id="rt-queue" style="display:none;flex-direction:column;height:100%;overflow:hidden">
+    <!-- Next event header -->
+    <div id="q-next-header" style="padding:12px 16px 12px;border-bottom:1px solid #1A2230;flex-shrink:0;background:#040810">
+      <div style="font-size:8px;color:#4A5A6A;letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#4A8FD4"></span>NEXT EVENT
+      </div>
+      <div id="q-next-empty" style="font-size:11px;color:#2A3545">Select a vehicle to view its upcoming events</div>
+      <div id="q-next-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:#DDEEFF;line-height:1.3" id="q-next-label">—</div>
+            <div style="font-size:9px;color:#4A5A6A;margin-top:3px;line-height:1.4" id="q-next-detail">—</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div id="q-next-timer" style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:#DDEEFF;line-height:1;letter-spacing:-0.5px">T-—</div>
+            <div style="font-size:8px;color:#4A5A6A;margin-top:3px;letter-spacing:.5px">UNTIL EVENT</div>
+          </div>
+        </div>
+        <div id="q-next-active-bar" style="display:none;margin-top:10px;padding:5px 10px;background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.25);border-radius:2px;border-left:3px solid #2ECC71">
+          <span style="font-size:9px;font-weight:700;color:#2ECC71;letter-spacing:.5px">● IN PROGRESS</span>
+          <div style="font-size:9px;color:#4A5A6A;margin-top:2px" id="q-next-active-detail">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- Queue list -->
+    <div class="panel-scroll" id="q-list" style="flex:1">
+      <div id="q-empty" class="empty-state">
+        <div class="empty-title">No Vehicle Selected</div>
+        <div class="empty-sub">Click any vehicle to view its scheduled events</div>
+      </div>
+      <div id="q-items" style="display:none;padding:8px 0"></div>
+    </div>
+  </div>
+
+  <div id="rt-coa" style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+  <div class="coa-scroll" id="coa-scroll">
+    <!-- L0 empty state -->
+    <div id="coa-empty" style="padding-top:10px">
+      <div class="empty-state">
+        <div class="empty-title">No Active Threat</div>
+        <div class="empty-sub">COA options will appear when a threat is detected and escalated to L2</div>
+      </div>
+    </div>
+
+    <!-- COA content (hidden at L0) -->
+    <div id="coa-content" style="display:none">
+      <div class="confirmed-badge" id="confirmed-badge">
+        <div class="cb-t">✓ COA Transmitted</div>
+        <div class="cb-s" id="confirmed-text">Logged at — · SGT REYES</div>
+      </div>
+      <div class="exp-banner" id="exp-banner">
+        <div class="eb-t">⚠ All COA Windows Expired</div>
+        <div class="eb-b">No decision windows remain. Escalate to chain of command immediately.</div>
+        <button class="eb-btn" onclick="escalateChain()">Escalate to Chain of Command →</button>
+      </div>
+
+      <!-- Asset being protected -->
+      <div style="margin:12px 16px 10px;padding:8px 10px;background:#040810;border:1px solid #1A2230;border-left:2px solid #00CCCC;display:flex;align-items:center;gap:8px;position:relative">
+        <svg width="14" height="14" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <circle cx="9" cy="9" r="7.5" stroke="#00CCCC" stroke-width="1.5" fill="rgba(0,204,204,0.08)"/>
+          <line x1="9" y1="4" x2="9" y2="14" stroke="#00CCCC" stroke-width="1.2"/>
+          <line x1="4" y1="9" x2="14" y2="9" stroke="#00CCCC" stroke-width="1.2"/>
+        </svg>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:700;color:#00CCCC;white-space:nowrap">USA-342 · USSF/NRO · ISR · LEO 518km</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
+          <div style="font-size:8px;color:#4A5A6A;letter-spacing:.8px;text-transform:uppercase;font-weight:600">Protecting</div>
+          <span style="font-size:8px;font-weight:700;color:#00CCCC;border:1px solid rgba(0,204,204,0.3);padding:2px 6px;border-radius:2px;white-space:nowrap">SELECTED</span>
+        </div>
+      </div>
+      <div class="vt-row">
+        <div class="vt"><button class="vt-btn active" id="vb-s" onclick="setView('s')">Simple</button><button class="vt-btn" id="vb-d" onclick="setView('d')">Detailed</button></div>
+      </div>
+      <div class="coa-lbl">Course of Action</div>
+      <!-- COA A -->
+      <div class="coa-card" id="ca-a" onclick="selectCOA('a')">
+        <div class="card-top">
+          <div class="card-left"><span class="coa-id">COA-A</span><span class="coa-nm">Evasive Maneuver</span></div>
+          <div class="card-right"><span class="risk-tag rt-lo">LOW RISK</span><span class="exp-tag">EXPIRED</span><span class="coa-timer" id="ti-a" style="color:#DDEEFF">T-00:12:30</span></div>
+        </div>
+        <div class="coa-fields">
+          <div><div class="cf-l">Fuel Cost (Δv)</div><div class="cf-v">8% reserve</div></div>
+          <div class="cf-r"><div class="cf-l">Mission Impact</div><div class="cf-v">Comms offline 4hrs</div></div>
+        </div>
+        <div class="card-det">
+          <div class="det-f">
+            <div><div class="cf-l">Maneuver Type</div><div class="cf-v">Plane change</div></div>
+            <div class="cf-r"><div class="cf-l">Burn Duration</div><div class="cf-v">93 mins</div></div>
+          </div>
+          <div class="intel-r"><div class="intel-l">Attribution / Intel</div><div class="intel-v">NORAD-48821 consistent with PRC inspection profile. Behavior assessed as deliberate — low probability of malfunction.</div></div>
+          <div class="conf-row"><span class="conf-l">Confidence</span><div class="conf-t"><div class="conf-f" style="width:84%;background:#2A3A4A"></div></div><span class="conf-v" style="color:#8A9AAA">84%</span></div>
+        </div>
+      </div>
+      <!-- COA B -->
+      <div class="coa-card" id="ca-b" onclick="selectCOA('b')">
+        <div class="card-top">
+          <div class="card-left"><span class="coa-id">COA-B</span><span class="coa-nm">Hold &amp; Monitor</span></div>
+          <div class="card-right"><span class="risk-tag rt-med">MED RISK</span><span class="exp-tag">EXPIRED</span><span class="coa-timer" id="ti-b" style="color:#DDEEFF">T-00:31:00</span></div>
+        </div>
+        <div class="coa-fields">
+          <div><div class="cf-l">Fuel Cost (Δv)</div><div class="cf-v">None</div></div>
+          <div class="cf-r"><div class="cf-l">Mission Impact</div><div class="cf-v">Growing risk if approach</div></div>
+        </div>
+        <div class="card-det">
+          <div class="det-f">
+            <div><div class="cf-l">Maneuver Type</div><div class="cf-v">None</div></div>
+            <div class="cf-r"><div class="cf-l">Keep Out Zone</div><div class="cf-v">20 km</div></div>
+          </div>
+          <div class="intel-r"><div class="intel-l">Attribution / Intel</div><div class="intel-v">No jamming observed. Hold viable unless keep out zone approached. EW environment nominal.</div></div>
+          <div class="conf-row"><span class="conf-l">Confidence</span><div class="conf-t"><div class="conf-f" style="width:71%;background:#2A3A4A"></div></div><span class="conf-v" style="color:#8A9AAA">71%</span></div>
+        </div>
+      </div>
+      <!-- COA C -->
+      <div class="coa-card" id="ca-c" onclick="selectCOA('c')">
+        <div class="card-top">
+          <div class="card-left"><span class="coa-id">COA-C</span><span class="coa-nm">Emergency IMP Burn</span></div>
+          <div class="card-right"><span class="risk-tag rt-hi">HIGH RISK</span><span class="exp-tag">EXPIRED</span><span class="coa-timer" id="ti-c" style="color:#E04444">T-00:41:00</span></div>
+        </div>
+        <div class="coa-fields">
+          <div><div class="cf-l">Fuel Cost (Δv)</div><div class="cf-v thr">22% reserve</div></div>
+          <div class="cf-r"><div class="cf-l">Mission Impact</div><div class="cf-v thr">Mission re-plan required</div></div>
+        </div>
+        <div class="card-det">
+          <div class="det-f">
+            <div><div class="cf-l">Maneuver Type</div><div class="cf-v">Manual Burn</div></div>
+            <div class="cf-r"><div class="cf-l">Burn Duration</div><div class="cf-v">31 mins</div></div>
+          </div>
+          <div class="intel-r"><div class="intel-l">Attribution / Intel</div><div class="intel-v">IMP Burn places USA-342 in degraded orbit 6–8 days. Mission re-plan required. Not recommended at this time.</div></div>
+          <div class="conf-row"><span class="conf-l">Confidence</span><div class="conf-t"><div class="conf-f" style="width:58%;background:#5A3A18"></div></div><span class="conf-v" style="color:#E04444">58%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="coa-footer">
+    <div class="sel-sum" id="sel-sum">Selected: <span id="sel-text">—</span></div>
+    <div class="fl" style="padding:0 0 5px">Justification Note</div>
+    <textarea class="note-field" id="note-field" placeholder="Add notes..."></textarea>
+    <button class="confirm-btn" id="confirm-btn" disabled>CONFIRM COA</button>
+  </div>
+</div><!-- /rt-coa -->
+
+</div><!-- /right sidebar -->
+</div><!-- /app-layout -->
+
+<!-- ════════════════════════════════════
+     TOAST
+════════════════════════════════════ -->
+<div class="toast-container">
+  <div class="toast" id="toast" onclick="clickToast()">
+    <div class="toast-dot"></div>
+    <div class="toast-body">
+      <div class="toast-title">ANOMALY DETECTED · NORAD-48821</div>
+      <div class="toast-sub">Unexpected burn sequence · DEV 9 · USA-342 at risk · Click to review</div>
+    </div>
+    <div class="toast-cta">Review →</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     CONFIRMATION DIALOG
+════════════════════════════════════ -->
+<div class="dialog-overlay" id="dialog-overlay">
+  <div class="dialog-box">
+    <div class="dialog-topbar" id="dialog-topbar"></div>
+    <div class="dialog-header">
+      <span class="dialog-title">⚠ CONFIRM COA SELECTION</span>
+      <button class="dialog-close" onclick="closeDialog()">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="dialog-lbl">Selected Action</div>
+      <div class="dialog-card" id="dialog-card">
+        <div class="dialog-card-title" id="dialog-coa-title">—</div>
+        <div class="dialog-card-fields">
+          <div><div class="fl">Threat Object</div><div class="fv thr">NORAD-48821</div></div>
+          <div><div class="fl">Asset at Risk</div><div class="fv hi">USA-342</div></div>
+          <div><div class="fl">DEV Score</div><div class="fv thr">9 / 10</div></div>
+        </div>
+      </div>
+      <div class="dialog-body-text">
+        Confirming will transmit this COA to <strong>USSPACECOM</strong> and lock the decision package. This action will be logged with your operator ID <strong>SGT REYES</strong> and timestamp. It cannot be undone.
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button class="btn-cancel" onclick="closeDialog()">CANCEL</button>
+      <button class="btn-confirm" onclick="executeConfirm()">CONFIRM &amp; TRANSMIT</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ES MODULE IMPORTS ── -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+
+<!-- ── EARTH RENDERER (module) ── -->
+<script type="module">
+import * as THREE from 'three';
+import { EarthRenderer } from './earth.js';
+window.THREE = THREE;
+
+const mount = document.getElementById('globe-mount');
+let earth;
+
+const earthRenderer = new EarthRenderer(mount, {
+  onReady(renderer) {
+    earth = renderer;
+    window._earth = renderer;
+    if(typeof updateGlobeLayers === 'function') updateGlobeLayers();
+    window.dispatchEvent(new CustomEvent('earthReady'));
+  },
+  onClick(id) {
+    if(typeof zoomToVehicle === 'function') zoomToVehicle(id);
+  }
+});
+
+// Expose so warden.js can call pointOfView
+window.getEarth = () => earth;
+
+// updateGlobeLayers — wires filter state to earth.setLayers()
+window.updateGlobeLayers = function() {
+  if(!earth || typeof VEH_DATA === 'undefined') return;
+  const f = typeof getFilters === 'function' ? getFilters() : {};
+  const l2Active = typeof appState !== 'undefined' && appState !== 'L0';
+
+  const vehicles = Object.entries(VEH_DATA)
+    .filter(([,v]) => {
+      if((v.type==='ours'||v.type==='a') && f.showOurs===false) return false;
+      if(v.type==='t'                    && f.showThreat===false) return false;
+      if(v.type==='suspect'              && f.showMon===false) return false;
+      return true;
+    })
+    .map(([id,v]) => ({
+      id, lat:v.lat, lng:v.lng, type:v.type,
+      html: typeof makeMilSymHTML === 'function' ? makeMilSymHTML(v.type, v.label) : '',
+      color: typeof typeColor === 'function' ? typeColor(v.type) : '#00CCCC',
+      clickable: true,
+    }));
+
+  const gsPoints = typeof GS_POINTS !== 'undefined' ? GS_POINTS : [];
+  const groundStations = (f.showGs !== false) ? gsPoints.map(g => ({
+    id: g.id, lat: g.lat, lng: g.lng, type: 'gs',
+    html: '<div style="width:6px;height:6px;border-radius:50%;background:rgba(0,204,204,0.6);box-shadow:0 0 6px rgba(0,204,204,0.4)"></div>',
+    color: '#00CCCC', clickable: false,
+  })) : [];
+
+  const paths = typeof buildPaths === 'function' ? buildPaths() : [];
+  const arcs  = typeof CLOSING_ARCS !== 'undefined' ? CLOSING_ARCS : [];
+
+  earth.setLayers({
+    vehicles,
+    groundStations,
+    paths: l2Active && f.showTraj ? paths : [],
+    arcs:  l2Active && f.showTraj && f.showThreat && f.showRisk ? arcs : [],
+  });
+};
+
+// resizeCloseUp for sidebar transitions
+window.resizeCloseUp = function() {
+  if(typeof zoomTarget !== 'undefined' && zoomTarget) {
+    const canvas = document.getElementById('globe');
+    if(canvas) {
+      canvas.width  = mount.clientWidth;
+      canvas.height = mount.clientHeight;
+    }
+  }
+};
+
+// zoomToVehicle / exitCloseUp
+window.zoomToVehicle = function(id) {
+  if(typeof VEH_DATA === 'undefined') return;
+  const vd = VEH_DATA[id]; if(!vd) return;
+  if(typeof zoomTarget !== 'undefined') zoomTarget = id;
+  if(typeof selectedGlobeVehicle !== 'undefined') selectedGlobeVehicle = id;
+  if(earth) earth.pointOfView({ lat:vd.lat, lng:vd.lng, altitude:0.6 }, 900);
+  const canvas = document.getElementById('globe');
+  if(canvas) { canvas.width=mount.clientWidth; canvas.height=mount.clientHeight; canvas.style.display='block'; }
+};
+
+window.exitCloseUp = function() {
+  if(typeof zoomTarget !== 'undefined') zoomTarget = null;
+  if(typeof activeCOAPreview !== 'undefined') activeCOAPreview = null;
+  const canvas = document.getElementById('globe');
+  if(canvas) canvas.style.display='none';
+  if(earth) earth.pointOfView({ lat:20, lng:-30, altitude:2.5 }, 900);
+};
+
+window.addEventListener('resize', () => { if(window.resizeCloseUp) window.resizeCloseUp(); });
+</script>
+
+<!-- ── APP LOGIC ── -->
+<script src="warden.js"></script>
+
+</body>
+</html>
